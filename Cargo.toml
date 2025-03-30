@@ -1,0 +1,17 @@
+[package]
+name = "actix-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-cors = "0.7.0"
+actix-identity = "0.8.0"
+actix-service = "2.0.3"
+actix-session = { version = "0.10.1", features = ["redis-session"] }
+actix-web = "4.9.0"
+actix-ws = "0.3.0"
+dotenv = "0.15.0"
+futures-util = "0.3.31"
+redis = "0.29.2"
+serde = {version = "1.0.219", features = ["derive"]}
+serde_json = "1.0.138"
