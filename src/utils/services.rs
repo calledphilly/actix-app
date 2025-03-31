@@ -2,8 +2,8 @@ use crate::utils::users::{self, GetData, User};
 use actix_identity::Identity;
 use actix_web::{get, post, HttpMessage, HttpResponse};
 // use sqlx;
-#[get("/users")]
-pub async fn users_handler() -> impl actix_web::Responder {
+#[get("/users_legacy")]
+pub async fn users_handler_legacy() -> impl actix_web::Responder {
     let user1 = serde_json::json!({
         "id":1,
         "firstname":"Yannis",
@@ -31,31 +31,33 @@ pub async fn users_handler() -> impl actix_web::Responder {
     actix_web::HttpResponse::Ok().json(data)
 }
 
-#[get("/users2")]
-async fn users_handler2(db_pool: actix_web::web::Data<sqlx::PgPool>) -> HttpResponse {
-    let users = sqlx::query_as::<_, User>("SELECT * FROM users")
+#[get("/users")]
+async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> HttpResponse {
+    let users = sqlx::query_as::<_, User>(r#"SELECT * FROM users"#)
         .fetch_all(db_pool.as_ref())
         .await
-        .unwrap_or_default();
+        .expect("Error during fetch of all users");
     HttpResponse::Ok().json(users)
 }
 
 #[post("/login")]
 pub async fn login_handler(
+    db_pool: actix_web::web::Data<sqlx::PgPool>,
     request: actix_web::HttpRequest,
     form: actix_web::web::Form<users::User>,
 ) -> impl actix_web::Responder {
-    let user = form.into_inner();
-    if user.get_username() == "calledphilly" && user.get_password() == "azerty" {
-        match actix_identity::Identity::login(&request.extensions(), user.get_id()) {
-            Ok(_) => {
-                actix_web::HttpResponse::Ok().body(format!("Bienvenue {} !", user.get_username()))
-            }
+    let data = form.into_inner();
+    let user = sqlx::query_as::<_, User>(format!(r#"SELECT * FROM users WHERE username = {} AND password = {}"#,data.get_username(),data.get_password()).as_str())
+        .fetch_one(db_pool.as_ref())
+        .await;
+    match user {
+        Ok(user) => match actix_identity::Identity::login(&request.extensions(), user.get_id()) {
+            Ok(_) => actix_web::HttpResponse::Ok()
+                .body(format!("Welcom {} !", data.get_username())),
             Err(e) => actix_web::HttpResponse::InternalServerError()
                 .body(format!("Error logging in: {}", e)),
-        }
-    } else {
-        actix_web::HttpResponse::Unauthorized().body("Identifiants invalides")
+        },
+        Err(_) => actix_web::HttpResponse::Unauthorized().body("Identifiants don't match")
     }
 }
 

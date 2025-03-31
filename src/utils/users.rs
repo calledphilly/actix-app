@@ -13,6 +13,7 @@ pub struct User {
     password: String,
     firstname: String,
     lastname: String,
+    year: String,
     born_at: String,
     get_married: bool,
     city: String,
