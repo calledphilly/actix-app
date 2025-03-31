@@ -1,20 +1,21 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 pub trait GetData {
     fn get_username(&self) -> String;
     fn get_password(&self) -> String;
     fn get_id(&self) -> String;
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize, FromRow)]
 pub struct User {
     id: String,
     username: String,
+    password: String,
     firstname: String,
     lastname: String,
-    password: String,
     born_at: String,
     get_married: bool,
-    city: String
+    city: String,
 }
 impl GetData for User {
     fn get_username(&self) -> String {

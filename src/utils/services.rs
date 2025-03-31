@@ -1,7 +1,7 @@
-use crate::utils::users::{self, GetData};
+use crate::utils::users::{self, GetData, User};
 use actix_identity::Identity;
 use actix_web::{get, post, HttpMessage, HttpResponse};
-
+// use sqlx;
 #[get("/users")]
 pub async fn users_handler() -> impl actix_web::Responder {
     let user1 = serde_json::json!({
@@ -31,6 +31,15 @@ pub async fn users_handler() -> impl actix_web::Responder {
     actix_web::HttpResponse::Ok().json(data)
 }
 
+#[get("/users2")]
+async fn users_handler2(db_pool: actix_web::web::Data<sqlx::PgPool>) -> HttpResponse {
+    let users = sqlx::query_as::<_, User>("SELECT * FROM users")
+        .fetch_all(db_pool.as_ref())
+        .await
+        .unwrap_or_default();
+    HttpResponse::Ok().json(users)
+}
+
 #[post("/login")]
 pub async fn login_handler(
     request: actix_web::HttpRequest,
@@ -38,8 +47,13 @@ pub async fn login_handler(
 ) -> impl actix_web::Responder {
     let user = form.into_inner();
     if user.get_username() == "calledphilly" && user.get_password() == "azerty" {
-        actix_identity::Identity::login(&request.extensions(), user.get_id());
-        actix_web::HttpResponse::Ok().body(format!("Bienvenue {} !", user.get_username()))
+        match actix_identity::Identity::login(&request.extensions(), user.get_id()) {
+            Ok(_) => {
+                actix_web::HttpResponse::Ok().body(format!("Bienvenue {} !", user.get_username()))
+            }
+            Err(e) => actix_web::HttpResponse::InternalServerError()
+                .body(format!("Error logging in: {}", e)),
+        }
     } else {
         actix_web::HttpResponse::Unauthorized().body("Identifiants invalides")
     }
@@ -52,6 +66,9 @@ pub async fn logout_handler(user: Identity) -> impl actix_web::Responder {
 }
 
 #[get("/hello")]
-async fn hello_handler() -> impl actix_web::Responder {
-    HttpResponse::Ok()
+async fn hello_handler(identity: Identity) -> impl actix_web::Responder {
+    match identity.id() {
+        Ok(v) => HttpResponse::Ok().body(format!("******\n{}\n******",v)),
+        Err(e) => HttpResponse::Unauthorized().body(format!("******\n{}\n******",e)),
+    }
 }
