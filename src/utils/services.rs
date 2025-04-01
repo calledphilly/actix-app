@@ -1,7 +1,9 @@
+use std::fmt::format;
+
 use crate::utils::users::{self, GetData, User};
 use actix_identity::Identity;
 use actix_web::{get, post, HttpMessage, HttpResponse};
-// use sqlx;
+
 #[get("/users_legacy")]
 pub async fn users_handler_legacy() -> impl actix_web::Responder {
     let user1 = serde_json::json!({
@@ -35,9 +37,14 @@ pub async fn users_handler_legacy() -> impl actix_web::Responder {
 async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> HttpResponse {
     let users = sqlx::query_as::<_, User>(r#"SELECT * FROM users"#)
         .fetch_all(db_pool.as_ref())
-        .await
-        .expect("Error during fetch of all users");
-    HttpResponse::Ok().json(users)
+        .await;
+    match users {
+        Ok(users) => HttpResponse::Ok().json(users),
+        Err(e) => {
+            eprintln!("Error occured while fetching users from database : {}", e);
+            HttpResponse::InternalServerError().body("Internal server error")
+        }
+    }
 }
 
 #[post("/login")]
@@ -47,17 +54,30 @@ pub async fn login_handler(
     form: actix_web::web::Form<users::User>,
 ) -> impl actix_web::Responder {
     let data = form.into_inner();
-    let user = sqlx::query_as::<_, User>(format!(r#"SELECT * FROM users WHERE username = {} AND password = {}"#,data.get_username(),data.get_password()).as_str())
+    let db_user = sqlx::query_as::<_, User>(r#"SELECT * FROM users WHERE username = $1"#)
+        .bind(data.get_username())
         .fetch_one(db_pool.as_ref())
         .await;
-    match user {
-        Ok(user) => match actix_identity::Identity::login(&request.extensions(), user.get_id()) {
-            Ok(_) => actix_web::HttpResponse::Ok()
-                .body(format!("Welcom {} !", data.get_username())),
-            Err(e) => actix_web::HttpResponse::InternalServerError()
-                .body(format!("Error logging in: {}", e)),
+    match db_user {
+        Ok(db_user) => match bcrypt::verify(data.get_password(), &db_user.get_password()) {
+            Ok(true) => {
+                match actix_identity::Identity::login(&request.extensions(), db_user.get_id()) {
+                    Ok(_) => actix_web::HttpResponse::Ok()
+                        .body(format!("Welcom {} !", data.get_username())),
+                    Err(e) => actix_web::HttpResponse::InternalServerError()
+                        .body(format!("Error logging in: {}", e)),
+                }
+            }
+            Ok(false) => actix_web::HttpResponse::Unauthorized().body("Identifiants don't match"),
+            Err(e) => {
+                eprintln!("Error occured while processing from bcrypt : {}", e);
+                actix_web::HttpResponse::InternalServerError().body("Internal server error")
+            }
         },
-        Err(_) => actix_web::HttpResponse::Unauthorized().body("Identifiants don't match")
+        Err(e) => {
+            eprintln!("Error occured while fetching of db_user : {}", e);
+            actix_web::HttpResponse::InternalServerError().body("Internal server error")
+        }
     }
 }
 
@@ -70,7 +90,7 @@ pub async fn logout_handler(user: Identity) -> impl actix_web::Responder {
 #[get("/hello")]
 async fn hello_handler(identity: Identity) -> impl actix_web::Responder {
     match identity.id() {
-        Ok(v) => HttpResponse::Ok().body(format!("******\n{}\n******",v)),
-        Err(e) => HttpResponse::Unauthorized().body(format!("******\n{}\n******",e)),
+        Ok(v) => HttpResponse::Ok().body(format!("******\n{}\n******", v)),
+        Err(e) => HttpResponse::Unauthorized().body(format!("******\n{}\n******", e)),
     }
 }
