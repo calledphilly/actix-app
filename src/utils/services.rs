@@ -32,7 +32,7 @@ pub async fn users_handler_legacy() -> impl actix_web::Responder {
 }
 
 #[get("/users")]
-async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> impl actix_web::Responder {
+pub async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> impl actix_web::Responder {
     let users = sqlx::query_as::<_, User>(r#"SELECT * FROM users"#)
         .fetch_all(db_pool.as_ref())
         .await;
@@ -46,7 +46,7 @@ async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> impl acti
 }
 
 #[post("/login")]
-async fn login_handler(
+pub async fn login_handler(
     db_pool: actix_web::web::Data<sqlx::PgPool>,
     request: actix_web::HttpRequest,
     form: actix_web::web::Form<users::User>,
@@ -83,7 +83,7 @@ async fn login_handler(
 }
 
 #[post("/logout")]
-async fn logout_handler(user: Identity) -> impl actix_web::Responder {
+pub async fn logout_handler(user: Identity) -> impl actix_web::Responder {
     user.logout();
     HttpResponse::Ok()
 }
