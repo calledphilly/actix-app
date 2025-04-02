@@ -1,5 +1,3 @@
-use std::fmt::format;
-
 use crate::utils::users::{self, GetData, User};
 use actix_identity::Identity;
 use actix_web::{get, post, HttpMessage, HttpResponse};
@@ -34,7 +32,7 @@ pub async fn users_handler_legacy() -> impl actix_web::Responder {
 }
 
 #[get("/users")]
-async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> HttpResponse {
+async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> impl actix_web::Responder {
     let users = sqlx::query_as::<_, User>(r#"SELECT * FROM users"#)
         .fetch_all(db_pool.as_ref())
         .await;
@@ -48,7 +46,7 @@ async fn users_handler(db_pool: actix_web::web::Data<sqlx::PgPool>) -> HttpRespo
 }
 
 #[post("/login")]
-pub async fn login_handler(
+async fn login_handler(
     db_pool: actix_web::web::Data<sqlx::PgPool>,
     request: actix_web::HttpRequest,
     form: actix_web::web::Form<users::User>,
@@ -59,13 +57,15 @@ pub async fn login_handler(
         .fetch_one(db_pool.as_ref())
         .await;
     match db_user {
-        Ok(db_user) => match bcrypt::verify(data.get_password(), &db_user.get_password()) {
+        Ok(db_user) => match bcrypt::verify(data.get_password().expect("data don't has password"), &db_user.get_password().expect("db_user don't has password")) {
             Ok(true) => {
-                match actix_identity::Identity::login(&request.extensions(), db_user.get_id()) {
+                match actix_identity::Identity::login(&request.extensions(), db_user.get_id().expect("db_user don't has id")) {
                     Ok(_) => actix_web::HttpResponse::Ok()
-                        .body(format!("Welcom {} !", data.get_username())),
-                    Err(e) => actix_web::HttpResponse::InternalServerError()
-                        .body(format!("Error logging in: {}", e)),
+                        .body(format!("Welcom {} !", data.get_username().expect("data don't has password"))),
+                    Err(e) => {
+                        eprintln!("Error logging in: {}", e);
+                        actix_web::HttpResponse::InternalServerError().body("Internal server error")
+                    }
                 }
             }
             Ok(false) => actix_web::HttpResponse::Unauthorized().body("Identifiants don't match"),
@@ -74,6 +74,7 @@ pub async fn login_handler(
                 actix_web::HttpResponse::InternalServerError().body("Internal server error")
             }
         },
+        Err(sqlx::Error::RowNotFound) => actix_web::HttpResponse::Unauthorized().body("Identifiants don't match"),
         Err(e) => {
             eprintln!("Error occured while fetching of db_user : {}", e);
             actix_web::HttpResponse::InternalServerError().body("Internal server error")
@@ -82,7 +83,7 @@ pub async fn login_handler(
 }
 
 #[post("/logout")]
-pub async fn logout_handler(user: Identity) -> impl actix_web::Responder {
+async fn logout_handler(user: Identity) -> impl actix_web::Responder {
     user.logout();
     HttpResponse::Ok()
 }

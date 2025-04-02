@@ -1,13 +1,41 @@
+use std::{process::Command, sync::{Arc, Mutex}, thread, time::Duration};
 use actix_cors;
 use actix_session;
 use actix_web::cookie::Key;
 use dotenv;
 mod utils;
+use signal_hook::{consts::{SIGINT, SIGTERM}, iterator::Signals};
 use sqlx::postgres::PgPoolOptions;
 use utils::services::{hello_handler, login_handler, logout_handler, users_handler};
+use tokio::sync::mpsc;
 
 #[actix_web::main] 
-async fn main() -> std::io::Result<()> {    
+async fn main() -> std::io::Result<()> {
+    let _ = Command::new("docker-compose")
+        .arg("up")
+        .arg("-d")
+        .status()
+        .expect("Error occured while starting of Docker Compose");
+
+    let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
+    let shutdown_tx = Arc::new(shutdown_tx);
+    let shutdown_tx_cloned = Arc::clone(&shutdown_tx);
+    let signals = Signals::new(&[SIGINT,SIGTERM])?;
+    let signals = Arc::new(Mutex::new(signals));
+    let signals_cloned = Arc::clone(&signals);
+    thread::spawn(move || {
+        for signal in signals_cloned.lock().expect("Error occured while signal_cloned's unwrapping").forever() {
+            match signal {
+                SIGINT | SIGTERM => {
+                    println!(" : Signal received, closing in process...");
+                    let _ = shutdown_tx_cloned.try_send(());
+                    break;
+                }
+                _ => unreachable!()
+            }
+        }
+    });
+    thread::sleep(Duration::from_millis(200));
     dotenv::dotenv().ok();
     let host = std::env::var("HOST").expect("Error occured while unwrapping of HOST");
     let host_cloned = host.clone();
@@ -26,7 +54,8 @@ async fn main() -> std::io::Result<()> {
     let cookie_secret_key = Key::generate();
     
     println!("\nServer running on : http://{}:{}",host,port_actix_app);
-    actix_web::HttpServer::new(move || {
+    println!("Press Control+C to stop Server\n");
+    let server = actix_web::HttpServer::new(move || {
         actix_web::App::new()
             .app_data(actix_web::web::Data::new(db_pool.clone()))
             .wrap(actix_session::SessionMiddleware::new(
@@ -52,6 +81,16 @@ async fn main() -> std::io::Result<()> {
             .default_service(actix_web::web::route().method(actix_web::http::Method::GET))
     })
     .bind((host, port_actix_app.parse::<u16>().unwrap()))?
-    .run()
-    .await
+    .run().handle();
+    
+    shutdown_rx.recv().await;
+    server.stop(true).await;
+
+    let _ = Command::new("docker-compose")
+        .arg("down")
+        .status()
+        .expect("Error occured while closing from Docker Compose");
+
+    println!("\n Server Closed");
+    Ok(())
 }
