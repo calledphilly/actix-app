@@ -3,9 +3,9 @@ use actix_cors;
 use actix_session;
 use actix_web::cookie::Key;
 use dotenv;
-mod utils;
 use sqlx::postgres::PgPoolOptions;
-use utils::services::{hello_handler, login_handler, logout_handler, users_handler, users_handler_legacy};
+mod utils;
+use utils::services::{hello, login, logout, users::{get_users, users_handler_legacy}};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -49,17 +49,17 @@ async fn main() -> std::io::Result<()> {
                 // .allow_any_origin()
                 .allowed_origin(format!("http://{}:{}",host_cloned,port_yew_app).as_str())
                 .allow_any_header()
-                .allowed_methods([actix_web::http::Method::GET,actix_web::http::Method::POST])
+                .allowed_methods([actix_web::http::Method::GET])
                 // .allow_any_method()
             )
             .service(users_handler_legacy)
-            .service(login_handler)
-            .service(logout_handler)
+            .service(login)
+            .service(logout)
             .service(actix_web::web::scope("/account")
-                .service(hello_handler)
+                .service(hello)
             )
             .service(actix_web::web::scope("/api")
-                .service(users_handler)
+                .service(get_users)
             )
             .default_service(actix_web::web::route().method(actix_web::http::Method::GET))
     })
@@ -73,7 +73,7 @@ async fn main() -> std::io::Result<()> {
         println!(" : SIGINT received, closing in process...");
         server_handle.stop(true).await;
     });
-    
+
     server.await?;
 
     Command::new("docker-compose")

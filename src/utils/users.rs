@@ -1,43 +1,33 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use sqlx::{self, prelude::FromRow};
+use sqlx::{self, prelude::FromRow, Decode};
 
-pub trait GetData {
-    fn _get_email(&self) -> Option<String>;
-    fn get_username(&self) -> Option<String>;
-    fn get_password(&self) -> Option<String>;
-    fn get_id(&self) -> Option<String>;
-}
-#[derive(Clone, Deserialize, Serialize, FromRow, Validate)]
+#[derive(Clone, Deserialize, Serialize, FromRow, Validate, Decode)]
 pub struct User {
-    #[garde(alphanumeric)]
-    id: Option<String>,
+    #[garde(custom(validate_id))]
+    pub id: Option<i32>,
     #[garde(email)]
-    email: Option<String>,
+    pub email: Option<String>,
     #[garde(alphanumeric)]
-    username: Option<String>,
+    pub username: Option<String>,
     #[garde(length(min = 8))]
-    password: Option<String>,
+    pub password: Option<String>,
     #[garde(ascii)]
-    firstname: Option<String>,
+    pub firstname: Option<String>,
     #[garde(ascii)]
-    lastname: Option<String>,
+    pub lastname: Option<String>,
     #[garde(alphanumeric)]
-    year: Option<String>,
+    pub year: Option<String>,
     #[garde(ascii)]
-    city: Option<String>,
+    pub city: Option<String>,
 }
-impl GetData for User {
-    fn _get_email(&self) -> Option<String> {
-        self.email.clone()
-    }
-    fn get_username(&self) -> Option<String> {
-        self.username.clone()
-    }
-    fn get_password(&self) -> Option<String> {
-        self.password.clone()
-    }
-    fn get_id(&self) -> Option<String> {
-        self.id.clone()
+fn validate_id(id: &Option<i32>, _ctx: &()) -> garde::Result {
+    match *id  {
+        Some(id) => match id {
+            0 => Err(garde::Error::new("ID must be greater than 0")),
+            v if v > 1_000_000 => Err(garde::Error::new("ID must be less than 1,000,000")),
+            _ => Ok(())
+        },
+        None => Ok(())
     }
 }
